@@ -1,0 +1,7 @@
+{
+    "terminal.integrated.env.linux": {
+        "PATH": "/home/ralle/.platformio/penv/bin:/home/ralle/.platformio/penv:/home/ralle/bin:/home/ralle/.local/bin:/home/ralle/bin:/home/ralle/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin",
+        "PLATFORMIO_CALLER": "vscode"
+    },
+    "C_Cpp.intelliSenseEngineFallback": "Enabled"
+}
