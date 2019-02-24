@@ -19,11 +19,11 @@ const byte address[6] = "var01";
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
-#define ONE_WIRE_BUS_1 52
+#define ONE_WIRE_BUS_1 44
 OneWire oneWire1(ONE_WIRE_BUS_1);
 DallasTemperature sensors1(&oneWire1);
 
-#define ONE_WIRE_BUS_2 53
+#define ONE_WIRE_BUS_2 45
 OneWire oneWire2(ONE_WIRE_BUS_2);
 DallasTemperature sensors2(&oneWire2);
 
@@ -59,6 +59,17 @@ DeviceAddress SensorSerial[11]= {
 float oldtulipesa=0, oldsavukaasu=0, oldlVesi=0, oldpVesi=0, oldsahLVesi=0, oldsahPVesi=0, oldvaraus=0, oldkHuone=0;
 
 float tulipesa, savukaasu, lVesi, pVesi, sahLVesi, sahPVesi, varaus, kHuone;
+
+//Alerts
+/*
+const int kayntitietoPin = 39;
+const int ylilampötPin = 38;
+const int ylipitSyottoPin = 40;
+const int lamporeleLauennutPin = 37;
+const int kayntisallittu = 36;
+
+bool kayntitieto, ylilampo, ylipitkasyotto, lamporeleLauennut, kayntisallittu;
+*/
 
 //Setting up rotary encoder, LCD and the rest
 #include <ClickEncoder.h>
@@ -116,17 +127,44 @@ return tempC;
 }
 
 
-float getTemperatureSensors2(byte j)
+float getTemperatureSensors2(byte k)
 {
 
-sensors2.requestTemperaturesByAddress(SensorSerial[j]);
+sensors2.requestTemperaturesByAddress(SensorSerial[k]);
 
-float tempC = sensors2.getTempC(SensorSerial[j]);
+float tempC = sensors2.getTempC(SensorSerial[k]);
 
 return tempC;
 
 }
 
+void sendMeasures() {
+  savukaasu = max1.temperature(RNOMINAL, RREF);
+  tulipesa = max2.temperature(RNOMINAL, RREF);
+  lVesi = getTemperatureSensors1(0);
+  pVesi = getTemperatureSensors1(1);
+  sahLVesi = getTemperatureSensors2(3);
+  sahPVesi = getTemperatureSensors2(4);
+  varaus = getTemperatureSensors1(2);
+  kHuone = getTemperatureSensors2(5);
+
+  String transfer = "{\"Savukaasu\":" + String(savukaasu) + ",\"Tulipesa\":"+ String(tulipesa) + ",\"Lvesi\":"+ String(lVesi) + ",\"Pvesi\":"+ String(pVesi) + ",\"SahlVesi\":"+ String(sahLVesi) +",\"SahPVesi\":"+ String(sahPVesi) + ",\"Varaus\":"+ String(varaus) + ",\"Khuone\":" + String(kHuone) + "}";
+  Serial.println(transfer);
+  int transferSize = transfer.length();
+
+  for (int i = 0; i < transferSize; i++) {
+
+    
+    int charToSend[1];
+    
+    
+    charToSend[0] = transfer.charAt(i);
+    
+    //wirte on the pipe
+    radio.write(charToSend,1);
+
+}
+}
 
 
 
@@ -144,28 +182,28 @@ void setup() {
   
 #ifdef WITH_LCD
   lcd.begin(LCD_CHARS, LCD_LINES);
-  //lcd.clear();
-  //displayAccelerationStatus();
 #endif
   lcd.print(menuItems[0]);
   Timer1.initialize(1000);
   Timer1.attachInterrupt(timerIsr);
  
   last = -1;
-  //t.every(30000, sendReading,0);
+  
 
 
   max1.begin(MAX31865_3WIRE);
   max2.begin(MAX31865_3WIRE);
+
+  t.every(1000*5, sendMeasures);
 }
 
 void loop() {
-  //t.update();
+  t.update();
   value += encoder->getValue();
 
- 
-  tulipesa = max1.temperature(RNOMINAL, RREF);
-  savukaasu = max2.temperature(RNOMINAL, RREF);
+  //10,9,8,7 Muistilappu
+  savukaasu = max1.temperature(RNOMINAL, RREF);
+  tulipesa = max2.temperature(RNOMINAL, RREF);
   lVesi = getTemperatureSensors1(0);
   pVesi = getTemperatureSensors1(1);
   sahLVesi = getTemperatureSensors2(3);
@@ -174,8 +212,33 @@ void loop() {
   kHuone = getTemperatureSensors2(5);
 
 
-  
+  for (int u=0; u<10; u++ ) {
+    //getTemperatureSensors1(u);
+    int r = u+1;
+    Serial.print("This sensor is: ");
+    Serial.print(r);
+    Serial.println(" from the first function!");
+    Serial.print("Results are: ");
+    Serial.println(getTemperatureSensors1(u));
 
+    Serial.print("This sensor is: ");
+    Serial.print(r);
+    Serial.println(" from the second function!");
+    Serial.print("Results are: ");
+    Serial.println(getTemperatureSensors2(u));
+
+    delay(1000);
+
+
+  }
+
+
+/*
+  Serial.print("Savukaasu is: ");
+  Serial.println(savukaasu);
+  Serial.print("Tulipesä on: ");
+  Serial.println(tulipesa);
+*/
   if (tulipesa != oldtulipesa || savukaasu != oldsavukaasu || lVesi != oldlVesi || pVesi != oldpVesi || sahLVesi != oldsahLVesi || sahPVesi != oldsahPVesi || varaus  != oldvaraus || kHuone != oldkHuone) {
       frame = 0;
       menuTick = 0;
