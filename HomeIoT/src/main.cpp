@@ -58,11 +58,11 @@ float tulipesa, savukaasu, lVesi, pVesi, sahLVesi, sahPVesi, varaus, kHuone;
 
 //Alerts
 
-const int aKayntitietoPin = 39;
-const int aYlilampoPin = 38;
+const int aKayntitietoPin = 38;
+const int aYlilampoPin = 39;
 const int aYlipitSyottoPin = 40;
-const int aLamporeleLauennutPin = 37;
-const int aKayntisallittu = 36;
+const int aLamporeleLauennutPin = 36;
+const int aKayntisallittu = 37;
 
 String alertStatus = "";
 /*
@@ -88,6 +88,18 @@ bool kayntitieto, ylilampo, ylipitkasyotto, lamporeleLauennut, kayntisallittu;
 
 LiquidCrystal lcd(LCD_RS, LCD_EN, LCD_D4, LCD_D5, LCD_D6, LCD_D7);
 #endif
+
+byte customChar[8] = {
+	0b01000,
+	0b10000,
+	0b01010,
+	0b00110,
+	0b01110,
+	0b01111,
+	0b11011,
+	0b01011
+};
+
 
 ClickEncoder *encoder;
 int16_t last, value;
@@ -144,13 +156,10 @@ void sendMeasures()
   varaus = getTemperatureSensors1(2);
   kHuone = getTemperatureSensors2(5);
 
-  String transfer = "{\"Savukaasu\":" + String(savukaasu) + ",\"Tulipesa\":" + String(tulipesa) + ",\"Lvesi\":" + String(lVesi) + ",\"Pvesi\":" + String(pVesi) + ",\"SahlVesi\":" + String(sahLVesi) + ",\"SahPVesi\":" + String(sahPVesi) + ",\"Varaus\":" + String(varaus) + ",\"Khuone\":" + String(kHuone) + ",\"kayntitieto\":" + String(digitalRead(aKayntitietoPin)) + ",\"ylilampo\":" + String(digitalRead(aYlilampoPin)) + ",\"ylipitkasyotto\":" + String(digitalRead(aYlipitSyottoPin)) + ",\"Lamporelel\":" + String(digitalRead(aLamporeleLauennutPin)) + ",\"kayntisallittu\":" + String(digitalRead(aKayntisallittu)) +"}";
+  String transfer = "{\"Savukaasu\":" + String(savukaasu) + ",\"Tulipesa\":" + String(tulipesa) + ",\"Lvesi\":" + String(lVesi) + ",\"Pvesi\":" + String(pVesi) + ",\"SahlVesi\":" + String(sahLVesi) + ",\"SahPVesi\":" + String(sahPVesi) + ",\"Varaus\":" + String(varaus) + ",\"Khuone\":" + String(kHuone) + ",\"kayntitieto\":" + String(digitalRead(aKayntitietoPin)) + ",\"ylilampo\":" + String(digitalRead(aYlilampoPin)) + ",\"ylipitkasyotto\":" + String(digitalRead(aYlipitSyottoPin)) + ",\"Lamporelel\":" + String(digitalRead(aLamporeleLauennutPin)) + ",\"kayntisallittu\":" + String(digitalRead(aKayntisallittu)) + "}";
   Serial.println(transfer);
   int transferSize = transfer.length();
 
-  /*
-                                                                                                                                                                                                                                                                                                                bool kayntitieto, ylilampo, ylipitkasyotto, lamporeleLauennut, kayntisallittu;
-*/
 
   for (int i = 0; i < transferSize; i++)
   {
@@ -166,6 +175,7 @@ void sendMeasures()
 
 void setup()
 {
+  lcd.createChar(0, customChar);
   //Encoder and serial
   Serial.begin(9600);
   encoder = new ClickEncoder(20, 21, 13, 4);
@@ -177,7 +187,7 @@ void setup()
   //Video killed the radio star
   radio.begin();
   radio.openWritingPipe(address);
-  radio.setPALevel(RF24_PA_MIN);
+  radio.setPALevel(RF24_PA_HIGH);
   radio.stopListening();
   //LCD
 #ifdef WITH_LCD
@@ -221,40 +231,28 @@ bool kayntitieto, ylilampo, ylipitkasyotto, lamporeleLauennut, kayntisallittu;
 
   if (digitalRead(aKayntisallittu) == HIGH)
   {
-    /*
-    if (digitalRead(aKayntitietoPin == LOW))
+
+    if (digitalRead(aYlilampoPin) == HIGH || digitalRead(aYlipitSyottoPin) == HIGH || digitalRead(aLamporeleLauennutPin) == HIGH)
     {
+      if (digitalRead(aYlilampoPin) == HIGH)
+      {
+        alertStatus += " Ylilampo";
+      }
+      if (digitalRead(aYlipitSyottoPin) == HIGH)
+      {
+        alertStatus += " Ylipitkasyotto";
+      }
+      if (digitalRead(aLamporeleLauennutPin) == HIGH)
+      {
+        alertStatus += " Lamporele lauennut";
+      }
+      int alertL = alertStatus.length();
       lcd.clear();
       lcd.setCursor(0, 0);
-      lcd.write("Poltin ei");
-      lcd.setCursor(0, 1);
-      lcd.write("toiminnassa");
-    }
-
-    else
-    {
-      */
-      if (digitalRead(aYlilampoPin) == HIGH || digitalRead(aYlipitSyottoPin) == HIGH || digitalRead(aLamporeleLauennutPin) == HIGH)
+      lcd.print(alertStatus);
+      if (alertL > 16)
       {
-        if (digitalRead(aYlilampoPin) == HIGH)
-        {
-          alertStatus += " Ylilampo";
-        }
-        if (digitalRead(aYlipitSyottoPin) == HIGH)
-        {
-          alertStatus += " Ylipitkasyotto";
-        }
-        if (digitalRead(aLamporeleLauennutPin) == HIGH)
-        {
-          alertStatus += " Lamporele lauennut";
-        }
-        int alertL = alertStatus.length();
-        lcd.clear();
-        lcd.setCursor(0, 0);
-        lcd.print(alertStatus);
-        if (alertL > 16) {
 
-        
         for (int positionCounter = 0; positionCounter < alertL; positionCounter++)
         {
 
@@ -262,197 +260,213 @@ bool kayntitieto, ylilampo, ylipitkasyotto, lamporeleLauennut, kayntisallittu;
 
           delay(200);
         }
-        }
+      }
+    }
+
+    else
+    {
+
+          
+    if (digitalRead(aKayntitietoPin == HIGH))
+    {
+      
+      lcd.setCursor(15, 0);
+      lcd.write((uint8_t)0);
+    }
+
+    else {
+      lcd.setCursor(15,0);
+      lcd.write(" ");
+    }
+      
+
+
+
+      //Updating menus
+      if (tulipesa != oldtulipesa || savukaasu != oldsavukaasu || lVesi != oldlVesi || pVesi != oldpVesi || sahLVesi != oldsahLVesi || sahPVesi != oldsahPVesi || varaus != oldvaraus || kHuone != oldkHuone)
+      {
+        frame = 0;
+        menuTick = 0;
+        oldkHuone = kHuone;
+        oldlVesi = lVesi;
+        oldpVesi = pVesi;
+        oldsahLVesi = sahLVesi;
+        oldsahPVesi = sahPVesi;
+        oldsavukaasu = savukaasu;
+        oldtulipesa = tulipesa;
+        oldvaraus = varaus;
       }
 
-      else
+      //Debugging decoder controls
+      if (value != last)
       {
 
-        //Updating menus
-        if (tulipesa != oldtulipesa || savukaasu != oldsavukaasu || lVesi != oldlVesi || pVesi != oldpVesi || sahLVesi != oldsahLVesi || sahPVesi != oldsahPVesi || varaus != oldvaraus || kHuone != oldkHuone)
+        Serial.print("Menu is ");
+        Serial.println(menu);
+        Serial.print("Last is ");
+        Serial.println(last);
+        Serial.print("Value is ");
+        Serial.println(value);
+
+        if (value < last)
         {
-          frame = 0;
+          menu--;
+          last = value;
           menuTick = 0;
-          oldkHuone = kHuone;
-          oldlVesi = lVesi;
-          oldpVesi = pVesi;
-          oldsahLVesi = sahLVesi;
-          oldsahPVesi = sahPVesi;
-          oldsavukaasu = savukaasu;
-          oldtulipesa = tulipesa;
-          oldvaraus = varaus;
+          if (menu <= 0)
+          {
+            menu = 9;
+          }
         }
 
-        //Debugging decoder controls
-        if (value != last)
+        else if (value > last)
         {
-
-          Serial.print("Menu is ");
-          Serial.println(menu);
-          Serial.print("Last is ");
-          Serial.println(last);
-          Serial.print("Value is ");
-          Serial.println(value);
-
-          if (value < last)
+          menu++;
+          last = value;
+          menuTick = 0;
+          if (menu >= 10)
           {
-            menu--;
-            last = value;
-            menuTick = 0;
-            if (menu <= 0)
-            {
-              menu = 9;
-            }
+            menu = 1;
           }
+        }
 
-          else if (value > last)
-          {
-            menu++;
-            last = value;
-            menuTick = 0;
-            if (menu >= 10)
-            {
-              menu = 1;
-            }
-          }
-
-          Serial.print("Encoder Value: ");
-          Serial.println(value);
+        Serial.print("Encoder Value: ");
+        Serial.println(value);
 #ifdef WITH_LCD
-          //lcd.setCursor(0, 2);
-          //lcd.print("         ");
-          //lcd.setCursor(0, 0);
-          //lcd.print(value);
+        //lcd.setCursor(0, 2);
+        //lcd.print("         ");
+        //lcd.setCursor(0, 0);
+        //lcd.print(value);
 #endif
-        }
+      }
 
-        //Menus
+      //Menus
 
-        switch (menu)
+      switch (menu)
+      {
+      case 1:
+        frame = 0;
+        break;
+      case 2:
+        frame = 0;
+        break;
+      case 3:
+        frame = 0;
+        break;
+      case 4:
+        frame = 0;
+        break;
+      case 5:
+        frame = 0;
+        break;
+      case 6:
+        frame = 0;
+        break;
+      case 7:
+        frame = 0;
+        break;
+      case 8:
+        frame = 0;
+        break;
+      case 9:
+        frame = 0;
+        break;
+      }
+
+      if (frame != menu && menuTick == 0)
+      {
+        if (menu == 1)
         {
-        case 1:
-          frame = 0;
-          break;
-        case 2:
-          frame = 0;
-          break;
-        case 3:
-          frame = 0;
-          break;
-        case 4:
-          frame = 0;
-          break;
-        case 5:
-          frame = 0;
-          break;
-        case 6:
-          frame = 0;
-          break;
-        case 7:
-          frame = 0;
-          break;
-        case 8:
-          frame = 0;
-          break;
-        case 9:
-          frame = 0;
-          break;
+          lcd.clear();
+          lcd.setCursor(0, 0);
+          lcd.print(menuItems[0]);
+          lcd.setCursor(0, 2);
+          lcd.print(tulipesa);
+          frame = menu;
+          menuTick = 1;
         }
-
-        if (frame != menu && menuTick == 0)
+        else if (menu == 2)
         {
-          if (menu == 1)
-          {
-            lcd.clear();
-            lcd.setCursor(0, 0);
-            lcd.print(menuItems[0]);
-            lcd.setCursor(0, 2);
-            lcd.print(tulipesa);
-            frame = menu;
-            menuTick = 1;
-          }
-          else if (menu == 2)
-          {
-            lcd.clear();
-            lcd.setCursor(0, 0);
-            lcd.print(menuItems[1]);
-            lcd.setCursor(0, 2);
-            lcd.print(savukaasu);
-            frame = menu;
-            menuTick = 1;
-          }
-          else if (menu == 3)
-          {
-            lcd.clear();
-            lcd.setCursor(0, 0);
-            lcd.print(menuItems[2]);
-            lcd.setCursor(0, 2);
-            lcd.print(lVesi);
-            frame = menu;
-            menuTick = 1;
-          }
-          else if (menu == 4)
-          {
-            lcd.clear();
-            lcd.setCursor(0, 0);
-            lcd.print(menuItems[3]);
-            lcd.setCursor(0, 2);
-            lcd.print(pVesi);
-            frame = menu;
-            menuTick = 1;
-          }
-          else if (menu == 5)
-          {
-            lcd.clear();
-            lcd.setCursor(0, 0);
-            lcd.print(menuItems[4]);
-            lcd.setCursor(0, 2);
-            lcd.print(sahLVesi);
-            frame = menu;
-            menuTick = 1;
-          }
-          else if (menu == 6)
-          {
-            lcd.clear();
-            lcd.setCursor(0, 0);
-            lcd.print(menuItems[5]);
-            lcd.setCursor(0, 2);
-            lcd.print(sahPVesi);
-            frame = menu;
-            menuTick = 1;
-          }
-          else if (menu == 7)
-          {
-            lcd.clear();
-            lcd.setCursor(0, 0);
-            lcd.print(menuItems[6]);
-            lcd.setCursor(0, 2);
-            lcd.print(varaus);
-            frame = menu;
-            menuTick = 1;
-          }
-          else if (menu == 8)
-          {
-            lcd.clear();
-            lcd.setCursor(0, 0);
-            lcd.print(menuItems[7]);
-            lcd.setCursor(0, 2);
-            lcd.print(kHuone);
-            frame = menu;
-            menuTick = 1;
-          }
-          else if (menu == 9)
-          {
-            lcd.clear();
-            lcd.setCursor(0, 0);
-            lcd.print(menuItems[8]);
-            frame = menu;
-            menuTick = 1;
-          }
+          lcd.clear();
+          lcd.setCursor(0, 0);
+          lcd.print(menuItems[1]);
+          lcd.setCursor(0, 2);
+          lcd.print(savukaasu);
+          frame = menu;
+          menuTick = 1;
         }
-        //Decoder buttons
-        ClickEncoder::Button b = encoder->getButton();
-        /* if (b != ClickEncoder::Open) {
+        else if (menu == 3)
+        {
+          lcd.clear();
+          lcd.setCursor(0, 0);
+          lcd.print(menuItems[2]);
+          lcd.setCursor(0, 2);
+          lcd.print(lVesi);
+          frame = menu;
+          menuTick = 1;
+        }
+        else if (menu == 4)
+        {
+          lcd.clear();
+          lcd.setCursor(0, 0);
+          lcd.print(menuItems[3]);
+          lcd.setCursor(0, 2);
+          lcd.print(pVesi);
+          frame = menu;
+          menuTick = 1;
+        }
+        else if (menu == 5)
+        {
+          lcd.clear();
+          lcd.setCursor(0, 0);
+          lcd.print(menuItems[4]);
+          lcd.setCursor(0, 2);
+          lcd.print(sahLVesi);
+          frame = menu;
+          menuTick = 1;
+        }
+        else if (menu == 6)
+        {
+          lcd.clear();
+          lcd.setCursor(0, 0);
+          lcd.print(menuItems[5]);
+          lcd.setCursor(0, 2);
+          lcd.print(sahPVesi);
+          frame = menu;
+          menuTick = 1;
+        }
+        else if (menu == 7)
+        {
+          lcd.clear();
+          lcd.setCursor(0, 0);
+          lcd.print(menuItems[6]);
+          lcd.setCursor(0, 2);
+          lcd.print(varaus);
+          frame = menu;
+          menuTick = 1;
+        }
+        else if (menu == 8)
+        {
+          lcd.clear();
+          lcd.setCursor(0, 0);
+          lcd.print(menuItems[7]);
+          lcd.setCursor(0, 2);
+          lcd.print(kHuone);
+          frame = menu;
+          menuTick = 1;
+        }
+        else if (menu == 9)
+        {
+          lcd.clear();
+          lcd.setCursor(0, 0);
+          lcd.print(menuItems[8]);
+          frame = menu;
+          menuTick = 1;
+        }
+      }
+      //Decoder buttons
+      ClickEncoder::Button b = encoder->getButton();
+      /* if (b != ClickEncoder::Open) {
     Serial.print("Button: ");
     #define VERBOSECASE(label) case label: Serial.println(#label); break;
     switch (b) {
@@ -471,7 +485,7 @@ bool kayntitieto, ylilampo, ylipitkasyotto, lamporeleLauennut, kayntisallittu;
         break;
     }
   } */
-      }
+    }
     //}
   }
   else
