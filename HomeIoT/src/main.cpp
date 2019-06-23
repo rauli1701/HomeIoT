@@ -1,19 +1,22 @@
 #include <Event.h>
 #include <Timer.h>
+#include <SPI.h>
+#include <Ethernet.h>
+#include <PubSubClient.h>
+#define MQTT_MAX_PACKET_SIZE 256;
 
 Timer t;
 
-//Setting up wireless for communication
-#include <SPI.h>
-#include <nRF24L01.h>
-#include <printf.h>
-#include <RF24.h>
-#include <RF24_config.h>
+//Setting Ethernet and MQTT
 
-RF24 radio(7, 8); //CE, CSN
+byte mac[]    = {  0xDE, 0xED, 0xBA, 0xFE, 0xFE, 0xED };
+IPAddress ip(192, 168, 1, 105);
+IPAddress server(192, 168, 1, 106);
 
-const byte address[6] = "var01";
+EthernetClient ethClient;
+PubSubClient client(ethClient);
 
+long lastReconnectAttempt = 0;
 //Setting up temperature sensors
 #include <OneWire.h>
 #include <DallasTemperature.h>
@@ -64,6 +67,8 @@ const int aYlipitSyottoPin = 40;
 const int aLamporeleLauennutPin = 36;
 const int aKayntisallittu = 37;
 
+int generalAlert = 0;
+int clearAll = 0;
 String alertStatus = "";
 /*
 bool kayntitieto, ylilampo, ylipitkasyotto, lamporeleLauennut, kayntisallittu;
@@ -77,7 +82,7 @@ bool kayntitieto, ylilampo, ylipitkasyotto, lamporeleLauennut, kayntisallittu;
 #include <LiquidCrystal.h>
 
 #define LCD_RS 22
-#define LCD_EN 2
+#define LCD_EN 6
 #define LCD_D4 27
 #define LCD_D5 25
 #define LCD_D6 24
@@ -100,7 +105,9 @@ byte customChar[8] = {
 	0b01011
 };
 
-
+int retries = 0;
+long mytime;
+long yourtime = 0;
 ClickEncoder *encoder;
 int16_t last, value;
 
@@ -119,10 +126,29 @@ void displayAccelerationStatus()
 #endif
 
 //For the menu
-String menuItems[] = {"Tulipesa", "Savukaasu", "L.Veden lampo", "P.Veden Lampo", "S.Vas L.Vesi", "S.Vas T.Vesi", "Varaus", "Kattilahuone", "Max ja Min"};
+String menuItems[] = {"Tulipesa", "Savukaasu", "L.Veden lampo", "P.Veden Lampo", "S.Vas L.Vesi", "S.Vas T.Vesi", "Varaus", "Kattilahuone", "Max ja Min", "Poltin"};
 int menu = 1;
 int frame = 1;
 int menuTick = 0;
+
+void callback(char* topic, byte* payload, unsigned int length) {
+  // handle message arrived
+}
+
+boolean reconnect() {
+  if (client.connect("arduinoClient")) {
+    // Once connected, publish an announcement...
+    Serial.println("Connected again");
+    retries = 0;
+    
+  }
+  else {
+    retries++;
+    Serial.println("Attempt number " + retries); 
+
+  }
+  return client.connected();
+}
 
 //Temperature sensor functions
 float getTemperatureSensors1(byte j)
@@ -145,32 +171,116 @@ float getTemperatureSensors2(byte k)
   return tempC;
 }
 
-void sendMeasures()
-{
-  savukaasu = max1.temperature(RNOMINAL, RREF);
-  tulipesa = max2.temperature(RNOMINAL, RREF);
-  lVesi = getTemperatureSensors1(0);
-  pVesi = getTemperatureSensors1(1);
-  sahLVesi = getTemperatureSensors2(3);
-  sahPVesi = getTemperatureSensors2(4);
-  varaus = getTemperatureSensors1(2);
-  kHuone = getTemperatureSensors2(5);
+void sendMeasures() {
 
-  String transfer = "{\"Savukaasu\":" + String(savukaasu) + ",\"Tulipesa\":" + String(tulipesa) + ",\"Lvesi\":" + String(lVesi) + ",\"Pvesi\":" + String(pVesi) + ",\"SahlVesi\":" + String(sahLVesi) + ",\"SahPVesi\":" + String(sahPVesi) + ",\"Varaus\":" + String(varaus) + ",\"Khuone\":" + String(kHuone) + ",\"kayntitieto\":" + String(digitalRead(aKayntitietoPin)) + ",\"ylilampo\":" + String(digitalRead(aYlilampoPin)) + ",\"ylipitkasyotto\":" + String(digitalRead(aYlipitSyottoPin)) + ",\"Lamporelel\":" + String(digitalRead(aLamporeleLauennutPin)) + ",\"kayntisallittu\":" + String(digitalRead(aKayntisallittu)) + "}";
-  Serial.println(transfer);
-  int transferSize = transfer.length();
+  int fok = client.state();
 
-
-  for (int i = 0; i < transferSize; i++)
-  {
-
-    int charToSend[1];
-
-    charToSend[0] = transfer.charAt(i);
-
-    //wirte on the pipe
-    radio.write(charToSend, 1);
+  switch (fok) {
+    case -4:
+      Serial.println("MQTT_CONNECTION_TIMEOUT - the server didn't respond within the keepalive time");
+      break;
+    
+    case -3:
+      Serial.println("MQTT_CONNECTION_LOST - the network connection was broken");
+      break;
+    
+    case -2:
+      Serial.println("MQTT_CONNECT_FAILED - the network connection failed");
+      break;
+    
+    case -1:
+      Serial.println("MQTT_DISCONNECTED - the client is disconnected cleanly");
+      break;
+    
+    case 0: 
+      Serial.println("MQTT_CONNECTED - the client is connected");
+      break;
+    
+    case 1: 
+      Serial.println("MQTT_CONNECT_BAD_PROTOCOL - the server doesn't support the requested version of MQTT");
+      break;
+    
+    case 2: 
+      Serial.println("MQTT_CONNECT_BAD_CLIENT_ID - the server rejected the client identifier");
+      break;
+    
+    case 3: 
+      Serial.println("MQTT_CONNECT_UNAVAILABLE - the server was unable to accept the connection");
+      break;
+    
+    case 4: 
+      Serial.println("MQTT_CONNECT_BAD_CREDENTIALS - the username/password were rejected");
+      break;
+    
+    case 5: 
+      Serial.println("MQTT_CONNECT_UNAUTHORIZED - the client was not authorized to connect");
+      break;
+  
   }
+
+
+
+savukaasu = max1.temperature(RNOMINAL, RREF);
+tulipesa = max2.temperature(RNOMINAL, RREF);
+lVesi = getTemperatureSensors1(0);
+pVesi = getTemperatureSensors1(1);
+sahLVesi = getTemperatureSensors2(3);
+sahPVesi = getTemperatureSensors2(4);
+varaus = getTemperatureSensors1(2);
+kHuone = getTemperatureSensors2(5);
+String transfer = "{\"Savukaasu\":" + String(savukaasu) + ",\"Tulipesa\":" + String(tulipesa) + ",\"Lvesi\":" + String(lVesi) + ",\"Pvesi\":" + String(pVesi) + ",\"SahlVesi\":" + String(sahLVesi) + ",\"SahPVesi\":" + String(sahPVesi) + ",\"Varaus\":" + String(varaus) + ",\"Khuone\":" + String(kHuone) + ",\"kayntitieto\":" + String(digitalRead(aKayntitietoPin)) + ",\"ylilampo\":" + String(digitalRead(aYlilampoPin)) + ",\"ylipitkasyotto\":" + String(digitalRead(aYlipitSyottoPin)) + ",\"Lamporelel\":" + String(digitalRead(aLamporeleLauennutPin)) + ",\"kayntisallittu\":" + String(digitalRead(aKayntisallittu)) + "}";
+delay(1000);
+Serial.println(transfer);
+int transferSize = transfer.length();
+Serial.println(transferSize);
+delay(1000);
+
+Serial.println("I am here, before payload");
+char payload[] = "";
+transfer.getBytes(payload, transferSize);
+/*
+client.publish("kattilat", payload);
+
+Serial.println("I am here, after payload, before transfer");
+
+ */
+/*if (client.connect("arduinoClient", "varasto", "Varasto1")) {
+    client.publish("kattilat", payload);
+    
+  }
+else {
+  Serial.println("No connection");
+}
+ */
+/*
+
+if (!client.connected()) {
+  Serial.println("Shit1");
+    long now = millis();
+    if (now - lastReconnectAttempt > 5000) {
+      lastReconnectAttempt = now;
+      Serial.println("Shit0");
+      // Attempt to reconnect
+      if (reconnect()) {
+        lastReconnectAttempt = 0;
+        Serial.println("Shit");
+        client.publish("kattilat", payload);
+        Serial.println("I have published mah shit after reconnect");
+        
+      }
+    }
+  } else {
+    // Client connected
+    client.publish("kattilat", payload);
+    
+    Serial.println("I have published mah shit");
+    
+  }
+
+Serial.println("I am here, after transfer");
+ */
+Serial.println("Whats up dawg?");
+
 }
 
 void setup()
@@ -178,17 +288,15 @@ void setup()
   lcd.createChar(0, customChar);
   //Encoder and serial
   Serial.begin(9600);
-  encoder = new ClickEncoder(20, 21, 13, 4);
+  encoder = new ClickEncoder(20, 21, 9, 4);
   //Sensors
   sensors1.begin();
   sensors2.begin();
   max1.begin(MAX31865_3WIRE);
   max2.begin(MAX31865_3WIRE);
   //Video killed the radio star
-  radio.begin();
-  radio.openWritingPipe(address);
-  radio.setPALevel(RF24_PA_HIGH);
-  radio.stopListening();
+  client.setServer(server, 1883);
+  client.setCallback(callback);
   //LCD
 #ifdef WITH_LCD
   lcd.begin(LCD_CHARS, LCD_LINES);
@@ -197,22 +305,30 @@ void setup()
   //Timers
   Timer1.initialize(1000);
   Timer1.attachInterrupt(timerIsr);
-
+  //t.every(15000, sendMeasures);
   last = -1;
-  t.every(1000 * 5, sendMeasures);
+ 
   //Alerts
   pinMode(aKayntisallittu, INPUT);
   pinMode(aKayntitietoPin, INPUT);
   pinMode(aLamporeleLauennutPin, INPUT);
   pinMode(aYlilampoPin, INPUT);
   pinMode(aYlipitSyottoPin, INPUT);
+  
+  Ethernet.begin(mac, ip);
+
+  lastReconnectAttempt = 0;
+
+  mytime = millis();
 }
 
 void loop()
 {
+  sendMeasures();
+  client.loop();  
   alertStatus = "";
   //Updating timers and encoder
-  t.update();
+  
   value += encoder->getValue();
   //Getting values from sensors
   //10,9,8,7 Muistilappu
@@ -224,27 +340,33 @@ void loop()
   sahPVesi = getTemperatureSensors2(4);
   varaus = getTemperatureSensors1(2);
   kHuone = getTemperatureSensors2(5);
-
+  Serial.println("I am here, i have received info from sensors");
   /*
 bool kayntitieto, ylilampo, ylipitkasyotto, lamporeleLauennut, kayntisallittu;
 */
 
-  if (digitalRead(aKayntisallittu) == HIGH)
-  {
+  
 
-    if (digitalRead(aYlilampoPin) == HIGH || digitalRead(aYlipitSyottoPin) == HIGH || digitalRead(aLamporeleLauennutPin) == HIGH)
+    if ((digitalRead(aYlilampoPin) == HIGH && generalAlert == 0 )|| (digitalRead(aYlipitSyottoPin) == HIGH && generalAlert == 0)|| (digitalRead(aLamporeleLauennutPin) == HIGH && generalAlert == 0))
     {
       if (digitalRead(aYlilampoPin) == HIGH)
       {
         alertStatus += " Ylilampo";
+        clearAll = 1;
+        Serial.println("I am here, i hace found pin for overheating");
       }
       if (digitalRead(aYlipitSyottoPin) == HIGH)
       {
         alertStatus += " Ylipitkasyotto";
+
+        clearAll = 1;
+        Serial.println("I am here, I have found too long feed");
       }
       if (digitalRead(aLamporeleLauennutPin) == HIGH)
       {
         alertStatus += " Lamporele lauennut";
+        clearAll = 1;
+        Serial.println("I am here, i have found lamporelet ja perkele se paukkuu");
       }
       int alertL = alertStatus.length();
       lcd.clear();
@@ -261,12 +383,48 @@ bool kayntitieto, ylilampo, ylipitkasyotto, lamporeleLauennut, kayntisallittu;
           delay(200);
         }
       }
+      Serial.println(generalAlert);
+      Serial.println(clearAll);
+      Serial.println("I have printed alerts");
+       ClickEncoder::Button b = encoder->getButton();
+  if (b != ClickEncoder::Open) {
+    Serial.print("Button: ");
+    switch (b) {
+      
+      case ClickEncoder::Pressed:
+          Serial.print("Pressed");
+          generalAlert = 1;
+          
+          break;
+
+      case ClickEncoder::Held:
+          Serial.print("Held");
+          break;
+
+      case ClickEncoder::Released:
+          Serial.print("Released");
+          break;
+
+      case ClickEncoder::Clicked:
+          Serial.print("Clicked");
+          generalAlert = 1;
+          
+          break;
+     
+      case ClickEncoder::DoubleClicked:
+          Serial.println("ClickEncoder::DoubleClicked");
+  
+          Serial.print("  Acceleration is ");
+          Serial.println((encoder->getAccelerationEnabled()) ? "enabled" : "disabled");
+          break;
+    }
+  }    
     }
 
     else
     {
 
-          
+          Serial.println("I am here, in the main menu");
     if (digitalRead(aKayntitietoPin == HIGH))
     {
       
@@ -295,6 +453,7 @@ bool kayntitieto, ylilampo, ylipitkasyotto, lamporeleLauennut, kayntisallittu;
         oldsavukaasu = savukaasu;
         oldtulipesa = tulipesa;
         oldvaraus = varaus;
+        Serial.println("I am here, i have updated menus");
       }
 
       //Debugging decoder controls
@@ -315,7 +474,7 @@ bool kayntitieto, ylilampo, ylipitkasyotto, lamporeleLauennut, kayntisallittu;
           menuTick = 0;
           if (menu <= 0)
           {
-            menu = 9;
+            menu = 11;
           }
         }
 
@@ -324,7 +483,7 @@ bool kayntitieto, ylilampo, ylipitkasyotto, lamporeleLauennut, kayntisallittu;
           menu++;
           last = value;
           menuTick = 0;
-          if (menu >= 10)
+          if (menu >= 12)
           {
             menu = 1;
           }
@@ -369,6 +528,12 @@ bool kayntitieto, ylilampo, ylipitkasyotto, lamporeleLauennut, kayntisallittu;
         frame = 0;
         break;
       case 9:
+        frame = 0;
+        break;
+      case 10:
+        frame = 0;
+        break;
+      case 11:
         frame = 0;
         break;
       }
@@ -463,9 +628,74 @@ bool kayntitieto, ylilampo, ylipitkasyotto, lamporeleLauennut, kayntisallittu;
           frame = menu;
           menuTick = 1;
         }
+        else if (menu == 10)
+        {
+          lcd.clear();
+          lcd.setCursor(0,0);
+          lcd.print(menuItems[9]);
+          lcd.setCursor(0,2);
+          if (digitalRead(aKayntisallittu) == HIGH) {
+            lcd.print("Sallittu");
+          }
+          else {
+            lcd.print("Estolla");
+          }
+          frame = menu;
+          menuTick = 1;
+        }
+        else if (menu == 11)
+        {
+          lcd.clear();
+          lcd.setCursor(0,0);
+          lcd.print("Hälyt: ");
+          if (clearAll > 0) {
+            lcd.print("Ei kuitattu");
+          }
+          else {
+            lcd.print("Kuitattu");
+          }
+          lcd.setCursor(0,2);
+          ClickEncoder::Button b = encoder->getButton();
+  if (b != ClickEncoder::Open) {
+    Serial.print("Button: ");
+    switch (b) {
+      
+      case ClickEncoder::Pressed:
+          Serial.print("Pressed");
+          generalAlert = 0;
+          clearAll = 0;
+          break;
+
+      case ClickEncoder::Held:
+          Serial.print("Held");
+          break;
+
+      case ClickEncoder::Released:
+          Serial.print("Released");
+          break;
+
+      case ClickEncoder::Clicked:
+          Serial.print("Clicked");
+          generalAlert = 0;
+          clearAll = 0;
+          break;
+     
+      case ClickEncoder::DoubleClicked:
+          Serial.println("ClickEncoder::DoubleClicked");
+  
+          Serial.print("  Acceleration is ");
+          Serial.println((encoder->getAccelerationEnabled()) ? "enabled" : "disabled");
+          break;
+    }
+  }    
+
+
+          frame = menu;
+          menuTick = 1;
+        }
       }
       //Decoder buttons
-      ClickEncoder::Button b = encoder->getButton();
+     // ClickEncoder::Button b = encoder->getButton();
       /* if (b != ClickEncoder::Open) {
     Serial.print("Button: ");
     #define VERBOSECASE(label) case label: Serial.println(#label); break;
@@ -487,7 +717,7 @@ bool kayntitieto, ylilampo, ylipitkasyotto, lamporeleLauennut, kayntisallittu;
   } */
     }
     //}
-  }
+  /*
   else
   {
     lcd.clear();
@@ -496,4 +726,6 @@ bool kayntitieto, ylilampo, ylipitkasyotto, lamporeleLauennut, kayntisallittu;
     lcd.setCursor(0, 1);
     lcd.write("estolla");
   }
+   */
+  t.update();
 }
