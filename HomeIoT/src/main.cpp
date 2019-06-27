@@ -229,18 +229,22 @@ sahPVesi = getTemperatureSensors2(4);
 varaus = getTemperatureSensors1(2);
 kHuone = getTemperatureSensors2(5);
 String transfer = "{\"Savukaasu\":" + String(savukaasu) + ",\"Tulipesa\":" + String(tulipesa) + ",\"Lvesi\":" + String(lVesi) + ",\"Pvesi\":" + String(pVesi) + ",\"SahlVesi\":" + String(sahLVesi) + ",\"SahPVesi\":" + String(sahPVesi) + ",\"Varaus\":" + String(varaus) + ",\"Khuone\":" + String(kHuone) + ",\"kayntitieto\":" + String(digitalRead(aKayntitietoPin)) + ",\"ylilampo\":" + String(digitalRead(aYlilampoPin)) + ",\"ylipitkasyotto\":" + String(digitalRead(aYlipitSyottoPin)) + ",\"Lamporelel\":" + String(digitalRead(aLamporeleLauennutPin)) + ",\"kayntisallittu\":" + String(digitalRead(aKayntisallittu)) + "}";
-delay(1000);
+
 Serial.println(transfer);
 int transferSize = transfer.length();
 Serial.println(transferSize);
-delay(1000);
+
 
 Serial.println("I am here, before payload");
-char payload[] = "";
-transfer.getBytes(payload, transferSize);
-/*
-client.publish("kattilat", payload);
+char payload = "";
 
+
+//transfer.toCharArray(payload, transferSize);
+
+
+
+//client.publish("kattilat", payload);
+/*
 Serial.println("I am here, after payload, before transfer");
 
  */
@@ -252,33 +256,49 @@ else {
   Serial.println("No connection");
 }
  */
-/*
+
 
 if (!client.connected()) {
-  Serial.println("Shit1");
+  Serial.println("Not connected, attempting");
     long now = millis();
     if (now - lastReconnectAttempt > 5000) {
       lastReconnectAttempt = now;
-      Serial.println("Shit0");
+      Serial.println("Its been a while, still attempting");
       // Attempt to reconnect
       if (reconnect()) {
         lastReconnectAttempt = 0;
         Serial.println("Shit");
-        client.publish("kattilat", payload);
+        client.beginPublish("kattilat", transferSize, false);
+
+        for (int x=0; x<transferSize;x++){
+            payload = transfer.charAt(x);
+            client.print(payload);
+        }
+
+        client.endPublish();
+
         Serial.println("I have published mah shit after reconnect");
         
       }
     }
   } else {
     // Client connected
-    client.publish("kattilat", payload);
+          client.beginPublish("kattilat", transferSize, false);
+
+      for (int x=0; x<transferSize;x++){
+          payload = transfer.charAt(x);
+          client.print(payload);
+      }
+
+      client.endPublish();
+
     
     Serial.println("I have published mah shit");
     
   }
 
 Serial.println("I am here, after transfer");
- */
+
 Serial.println("Whats up dawg?");
 
 }
@@ -305,7 +325,7 @@ void setup()
   //Timers
   Timer1.initialize(1000);
   Timer1.attachInterrupt(timerIsr);
-  //t.every(15000, sendMeasures);
+  t.every(15000, sendMeasures);
   last = -1;
  
   //Alerts
@@ -319,13 +339,15 @@ void setup()
 
   lastReconnectAttempt = 0;
 
-  mytime = millis();
 }
 
 void loop()
 {
-  sendMeasures();
-  client.loop();  
+  if (!client.connected()) {
+    reconnect();
+  }
+  client.loop();
+
   alertStatus = "";
   //Updating timers and encoder
   
